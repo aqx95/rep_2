@@ -57,7 +57,6 @@ def _mp_fn(rank, flags):
 
     fold_model = flags['FOLD_MODEL']
     fold_model.to(device)
-    logger = flags['LOGGER']
 
     lr = flags['LR']
     optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-6)
@@ -68,13 +67,13 @@ def _mp_fn(rank, flags):
     for e_no, epoch in enumerate(range(flags['EPOCHS'])):
         train_paraloader = pl.ParallelLoader(train_dl, [device]).per_device_loader(device)
         train_one_epoch(e_no, train_paraloader, fold_model, optimizer,
-                        criterion, device, config, logger, scheduler)
+                        criterion, device, config, scheduler)
         del train_paraloader
         gc.collect()
 
         val_paraloader = pl.ParallelLoader(val_dl, [device]).per_device_loader(device)
         loss, dice_coeff = validate_one_epoch(e_no, val_paraloader, fold_model,
-                                              criterion, device, config, logger)
+                                              criterion, device, config)
         del val_paraloader
         gc.collect()
 
@@ -111,7 +110,6 @@ if __name__ == '__main__':
                  'TRAIN_DS': train_ds,
                  'VAL_DS': valid_ds,
                  'FOLD_MODEL': model,
-                 'LOGGER': logger,
                  'LR': config.lr,
                  'BATCH_SIZE' : 8,
                  'EPOCHS' : 30}
