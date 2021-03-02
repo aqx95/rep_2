@@ -83,42 +83,44 @@ def _mp_fn(rank, flags):
             xm.save(fold_model.state_dict(), f"model_{flags['FOLD_NO']}.pth")
 
 
-config = GlobalConfig
-seed_everything(config.seed)
-logger = log(config, 'root')
+###MAIN
+if __name__ == '__main__':
+    config = GlobalConfig
+    seed_everything(config.seed)
+    logger = log(config, 'root')
 
-filename = np.array(os.listdir(config.IMG_PATH))
-groups = [x.split('_')[0] for x in filename]
-group_fold = GroupKFold(n_splits=config.num_split)
+    filename = np.array(os.listdir(config.IMG_PATH))
+    groups = [x.split('_')[0] for x in filename]
+    group_fold = GroupKFold(n_splits=config.num_split)
 
-for fold, (t_idx, v_idx) in enumerate(group_fold.split(filename, groups=groups)):
-    logger.info("Fold: {}".format(fold+1))
-    logger.info("-"*40)
+    for fold, (t_idx, v_idx) in enumerate(group_fold.split(filename, groups=groups)):
+        logger.info("Fold: {}".format(fold+1))
+        logger.info("-"*40)
 
-    train_id = filename[t_idx]
-    valid_id = filename[v_idx]
+        train_id = filename[t_idx]
+        valid_id = filename[v_idx]
 
-    train_ds = HuBMAPData(img_ids=train_id, config=config, transform=get_train_transform(config))
-    valid_ds = HuBMAPData(img_ids=valid_id, config=config, transform=get_valid_transform(config))
+        train_ds = HuBMAPData(img_ids=train_id, config=config, transform=get_train_transform(config))
+        valid_ds = HuBMAPData(img_ids=valid_id, config=config, transform=get_valid_transform(config))
 
-    model = HuBMAPModel(config)
-    model.float()
+        model = HuBMAPModel(config)
+        model.float()
 
-    FLAGS = {'FOLD_NO': fold,
-             'TRAIN_DS': train_ds,
-             'VAL_DS': valid_ds,
-             'FOLD_MODEL': model,
-             'LOGGER': logger,
-             'LR': config.lr,
-             'BATCH_SIZE' : 8,
-             'EPOCHS' : 30}
+        FLAGS = {'FOLD_NO': fold,
+                 'TRAIN_DS': train_ds,
+                 'VAL_DS': valid_ds,
+                 'FOLD_MODEL': model,
+                 'LOGGER': logger,
+                 'LR': config.lr,
+                 'BATCH_SIZE' : 8,
+                 'EPOCHS' : 30}
 
-    xmp.spawn(fn = _mp_fn,
-              args = (FLAGS,),
-              nprocs = 8,
-              start_method = 'fork')
+        xmp.spawn(fn = _mp_fn,
+                  args = (FLAGS,),
+                  nprocs = 8,
+                  start_method = 'fork')
 
 
-    logger.info('\n')
+        logger.info('\n')
 
-    del train_ds, val_ds, model
+        del train_ds, val_ds, model
