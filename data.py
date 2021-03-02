@@ -37,10 +37,15 @@ def get_train_transform(config):
         ShiftScaleRotate(shift_limit=0.0625, scale_limit=0.2, rotate_limit=15, p=0.9,
                          border_mode=cv2.BORDER_REFLECT),
         OneOf([
+            OpticalDistortion(p=0.3),
+            GridDistortion(p=.1),
+            IAAPiecewiseAffine(p=0.3),
+              ], p=0.3),
+        OneOf([
             HueSaturationValue(10,15,10),
             CLAHE(clip_limit=2),
             RandomBrightnessContrast(),
-            ], p=0.5),
+              ], p=0.3),
         Normalize(mean=[0.485, 0.456, 0.406],std=[0.229, 0.224, 0.225]),
         ToTensorV2(p=1.0),
         ])

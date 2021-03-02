@@ -16,7 +16,7 @@ def log(config, name):
 
     #File handler
     handler = logging.FileHandler(log_file)
-    handler.setlevel(logging.INFO)
+    handler.setLevel(logging.INFO)
     formatter = logging.Formatter(file_log_format)
     handler.setFormatter(formatter)
 

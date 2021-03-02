@@ -1,8 +1,11 @@
 import gc
 import logging
+import torch
 from tqdm import tqdm
 import torch_xla
 import torch_xla.core.xla_model as xm
+
+from common import get_dice_coeff, reduce
 
 def train_one_epoch(epoch, train_loader, model, optimizer, criterion, device, config, logger, scheduler=None):
     model.train()
@@ -29,8 +32,7 @@ def train_one_epoch(epoch, train_loader, model, optimizer, criterion, device, co
 
         del img, mask, mask_pred
 
-    logger.info(f"Epoch: {epoch} | Loss: {reduce(losses): .4f} | Dice Coeff: {reduce(dice_coeffs): .4f}")
-    xm.master_print(f"Epoch: {epoch} | Loss: {reduce(losses): .4f} | Dice Coeff: {reduce(dice_coeffs): .4f}")
+    xm.master_print(f"Epoch: {epoch} | Train Loss: {reduce(losses): .4f} | Train Dice: {reduce(dice_coeffs): .4f}")
 
 
 def validate_one_epoch(epoch, valid_loader, model, criterion, device, config, logger):
@@ -58,6 +60,5 @@ def validate_one_epoch(epoch, valid_loader, model, criterion, device, config, lo
     total_loss = reduce(losses)
 
     xm.master_print(f'Val Loss : {total_loss: .4f}, Val Dice : {total_dice_coeff: .4f}')
-    logger.info(f'Val Loss : {total_loss: .4f}, Val Dice : {total_dice_coeff: .4f}')
 
     return total_loss, total_dice_coeff

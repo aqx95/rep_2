@@ -1,7 +1,7 @@
 
 class GlobalConfig:
-    IMG_PATH = '/kaggle/input/hubmap-256x256/train'
-    MASK_PATH = '/kaggle/input/hubmap-256x256/masks'
+    IMG_PATH = '../train'
+    MASK_PATH = '../masks'
     LOG_PATH = 'log'
     num_split = 5
     seed = 2020

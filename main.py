@@ -15,8 +15,10 @@ import torch_xla.distributed.xla_multiprocessing as xmp
 
 from config import GlobalConfig
 from logger import log
-from data import HuBMAPData
+from loss import loss_fn
 from model import HuBMAPModel
+from engine import train_one_epoch, validate_one_epoch
+from data import HuBMAPData, get_train_transform, get_valid_transform
 
 
 def seed_everything(seed):
@@ -62,7 +64,6 @@ def _mp_fn(rank, flags):
     scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=20, eta_min=1e-6)
     criterion = loss_fn(config)
     xm.master_print("Engine ready for training!")
-    logger.info("Engine ready for training!")
 
     for e_no, epoch in enumerate(range(flags['EPOCHS'])):
         train_paraloader = pl.ParallelLoader(train_dl, [device]).per_device_loader(device)
@@ -78,24 +79,24 @@ def _mp_fn(rank, flags):
         gc.collect()
 
         if dice_coeff > best_dice:
-            best_dice = dice_coeff
-            xm.master_print("Saving Model...")
+            xm.master_print("Saving Best Model | Dice Improvement: {} -----> {}".format(best_dice, dice_coeff))
             xm.save(fold_model.state_dict(), f"model_{flags['FOLD_NO']}.pth")
+            best_dice = dice_coeff
+
 
 
 ###MAIN
 if __name__ == '__main__':
     config = GlobalConfig
     seed_everything(config.seed)
-    logger = log(config, 'root')
 
     filename = np.array(os.listdir(config.IMG_PATH))
     groups = [x.split('_')[0] for x in filename]
     group_fold = GroupKFold(n_splits=config.num_split)
 
     for fold, (t_idx, v_idx) in enumerate(group_fold.split(filename, groups=groups)):
-        logger.info("Fold: {}".format(fold+1))
-        logger.info("-"*40)
+        print("Fold: {}".format(fold+1))
+        print("-"*40)
 
         train_id = filename[t_idx]
         valid_id = filename[v_idx]
@@ -121,6 +122,6 @@ if __name__ == '__main__':
                   start_method = 'fork')
 
 
-        logger.info('\n')
+        print('\n')
 
         del train_ds, val_ds, model
