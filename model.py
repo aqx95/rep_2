@@ -12,3 +12,8 @@ class HuBMAPModel(nn.Module):
     def forward(self, x):
         img_mask = self.model(x)
         return img_mask
+
+## Model factory
+def create_model(config):
+    if config.net == 'unet':
+        return HuBMAPModel(config)

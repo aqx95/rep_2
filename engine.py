@@ -1,64 +1,138 @@
-import gc
+import os
 import logging
+import datetime
+import time
 import torch
+import numpy as np
+import torch.nn as nn
 from tqdm import tqdm
-import torch_xla
-import torch_xla.core.xla_model as xm
 
-from common import get_dice_coeff, reduce_
+from common import get_dice_coeff, LossMeter
 
-def train_one_epoch(epoch, train_loader, model, optimizer, criterion, device, config, scheduler=None):
-    model.train()
-    losses = []
-    dice_coeffs = []
+class Fitter:
+    def __init__(self, model, device, config):
+        self.model = model
+        self.device = device
+        self.config = config
+        self.logger = logging.getLogger('training')
 
-    for steps, (img, mask) in tqdm(enumerate(train_loader), total=len(train_loader)):
-        img, mask = img.to(device), mask.to(device)
+        self.best_dice = 0
+        self.epoch = 0
+        self.best_loss = np.inf
+        self.oof = None
+        self.monitored_metric = None
 
-        mask_pred = model(img.float())
-        loss = criterion(mask_pred, mask.float())
-        loss.backward()
-        xm.optimizer_step(optimizer)
-        optimizer.zero_grad()
+        if not os.path.exists(self.config.SAVE_PATH):
+            os.makedirs(self.config.SAVE_PATH)
+        if not os.path.exists(self.config.LOG_PATH):
+            os.makedirs(self.config.LOG_PATH)
 
-        if config.train_step_scheduler:
-            scheduler.step(epoch+steps/len(train_loader))
-
-        loss_reduce = xm.mesh_reduce('Train_Loss', loss, reduce_)
-        losses.append(loss_reduce.item())
-
-        dice_coeff = get_dice_coeff(torch.squeeze(mask_pred), mask.float())
-        dice_coeffs.append(xm.mesh_reduce('Train_DiceCoeff', dice_coeff, reduce_).item())
-
-        del img, mask, mask_pred
-
-    xm.master_print(f"Epoch: {epoch} | Train Loss: {reduce(losses): .4f} | Train Dice: {reduce(dice_coeffs): .4f}")
+        self.loss = loss_fn(config.criterion, config).to(self.device)
+        self.optimizer = getattr(torch.optim, config.optimizer)(self.model.parameters(),
+                                **config.optimizer_params[config.optimizer])
+        self.scheduler = getattr(torch.optim.lr_scheduler, config.scheduler)(optimizer=self.optimizer,
+                                **config.scheduler_params[config.scheduler])
 
 
-def validate_one_epoch(epoch, valid_loader, model, criterion, device, config):
-    model.eval()
-    losses = []
-    dice_coeffs = []
+    def fit(self, train_loader, valid_loader, fold):
+        self.logger.info("Starts Training with {} on Device: {}".format(self.config.encoder, self.device))
 
-    with torch.no_grad():
-        for steps, (img, mask) in enumerate(valid_loader):
-            img, mask = img.to(device), mask.to(device)
+        for epoch in range(self.config.num_epochs):
+            self.logger.info("LR: {}".format(self.optimizer.param_groups[0]['lr']))
+            train_loss = self.train_one_epoch(train_loader)
+            self.logger.info("[RESULTS] Train Epoch: {} | Train Loss: {}".format(self.epoch, train_loss))
+            valid_loss, dice_coeff, val_pred = self.validate_one_epoch(valid_loader)
+            self.logger.info("[RESULTS] Validation Epoch: {} | Valid Loss: {} | Dice: {:.3f}".format(self.epoch, valid_loss, dice_coeff))
 
-            mask_pred = model(img.float())
-            loss = criterion(mask_pred,mask.float())
-            losses.append(xm.mesh_reduce('val_loss_reduce',
-                                         loss,
-                                         reduce_).item())
+            self.monitored_metrics = dice_coeff
+            self.oof = val_pred
 
-            dice_coeff = get_dice_coeff(torch.squeeze(mask_pred),
-                                        mask.float())
-            dice_coeffs.append(xm.mesh_reduce('val_dice_reduce',
-                                              dice_coeff,
-                                              reduce_).item())
+            if self.best_loss > valid_loss:
+                self.best_loss = valid_loss
+            if self.best_dice < dice_coeff:
+                self.logger.info(f"Epoch {self.epoch}: Saving model... | Dice improvement {self.best_dice} -> {dice_coeff}")
+                self.save(os.path.join(self.config.SAVE_PATH, '{}_fold{}.pt').format(self.config.encoder, fold))
+                self.dice = dice_coeff
 
-    total_dice_coeff = reduce_(dice_coeffs)
-    total_loss = reduce_(losses)
+            #Update Scheduler
+            if self.config.val_step_scheduler:
+                if isinstance(self.scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+                    self.scheduler.step(self.monitored_metrics)
+                else:
+                    self.scheduler.step()
 
-    xm.master_print(f'Val Loss : {total_loss: .4f}, Val Dice : {total_dice_coeff: .4f}')
+            self.epoch += 1
 
-    return total_loss, total_dice_coeff
+        fold_checkpoint = self.load(os.path.join(self.config.SAVE_PATH, '{}_fold{}.pt').format(self.config.encoder, fold))
+        return fold_checkpoint
+
+
+    def train_one_epoch(self, train_loader):
+        self.model.train()
+        summary_loss = LossMeter()
+        pbar = tqdm(enumerate(train_loader), total=len(train_loader))
+
+        for step, (img, mask) in pbar:
+            img, mask = img.to(self.device), mask.to(self.device)
+            batch_size = img.shape[0]
+
+            mask_pred = self.model(img.float())
+            loss = self.loss(mask_pred, mask.float())
+            summary_loss.update(loss.item(), batch_size)
+            loss.backward()
+            self.optimizer.step()
+            self.optimizer.zero_grad()
+
+            if self.train_step_scheduler:
+                self.scheduler.step(self.epoch + step/len(train_loader))
+
+            description = f"Train Steps: {step}/{len(train_loader)} Summary Loss: {summary_loss.avg:.3f}"
+            pbar.set_description(description)
+
+        return summary_loss.avg
+
+
+    def validate_one_epoch(self, valid_loader):
+        self.model.eval()
+        summary_loss = LossMeter()
+        val_pred = []
+        mask_gt = []
+        pbar = tqdm(enumerate(valid_loader), total=len(valid_loader))
+
+        with torch.no_grad():
+            for step, (img, mask) in pbar:
+                img, mask = img.to(self.device), mask.to(self.device)
+                batch_size = img.shape[0]
+
+                mask_pred = self.model(mask.float())
+                loss = self.loss(mask_pred, mask.float())
+                summary_loss.update(loss.item(), batch_size)
+                val_pred.append(mask_pred)
+                mask_gt.append(mask.float())
+
+                description = f"Valid Steps: {step}/{len(valid_loader)} Summary Loss: {summary_loss.avg:.3f}"
+                pbar.set_description(description)
+
+        val_pred = np.concatenate(val_pred, axis=0)
+        mask_gt = np.concatenate(mask_gt, axis=0)
+        dice_coeff = get_dice_coeff(val_pred, mask_gt)
+
+        return summary_loss.avg, dice_coeff, val_pred
+
+
+    def save(self, path):
+        self.model.eval()
+        torch.save(
+            {
+                "model_state_dict": self.model.state_dict(),
+                "optimizer_state_dict": self.optimizer.state_dict(),
+                "best_auc": self.best_auc,
+                "epoch": self.epoch,
+                "oof_pred": self.oof
+            }, path
+        )
+
+
+    def load(self, path):
+        checkpoint = torch.load(path)
+        return checkpoint

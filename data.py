@@ -46,13 +46,32 @@ def get_train_transform(config):
             CLAHE(clip_limit=2),
             RandomBrightnessContrast(),
               ], p=0.3),
-        Normalize(mean=[0.485, 0.456, 0.406],std=[0.229, 0.224, 0.225]),
+        Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ToTensorV2(p=1.0),
         ])
 
-
 def get_valid_transform(config):
     return Compose([
-                Normalize(mean=[0.485, 0.456, 0.406],std=[0.229, 0.224, 0.225]),
+                Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
                 ToTensorV2(p=1.0),
             ])
+
+
+#Prepare dataloaders
+def prepare_loader(train_id, valid_id, config):
+    train_ds = HuBMAPData(img_ids=train_id, config=config, transform=get_train_transform(config))
+    valid_ds = HuBMAPData(img_ids=valid_id, config=config, transform=get_valid_transform(config))
+
+    train_loader = DataLoader(
+        train_ds,
+        batch_size=config.batch_size,
+        shuffle=True,
+        num_workers=2)
+
+    valid_loader = DataLoader(
+        valid_ds,
+        batch_size = config.batch_size,
+        shuffle=False,
+        num_workers=2)
+
+    return train_loader, valid_loader

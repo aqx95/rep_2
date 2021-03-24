@@ -7,18 +7,13 @@ import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 from sklearn.model_selection import GroupKFold
 
-import torch_xla
-import torch_xla.core.xla_model as xm
-from torch.utils.data.distributed import DistributedSampler
-import torch_xla.distributed.parallel_loader as pl
-import torch_xla.distributed.xla_multiprocessing as xmp
-
 from config import GlobalConfig
 from logger import log
 from loss import loss_fn
-from model import HuBMAPModel
-from engine import train_one_epoch, validate_one_epoch
-from data import HuBMAPData, get_train_transform, get_valid_transform
+from model import create_model
+from engine import Fitter
+from data import prepare_loader
+from common import get_dice_coeff
 
 
 def seed_everything(seed):
@@ -30,96 +25,79 @@ def seed_everything(seed):
     torch.backends.cudnn.deterministic = True
 
 
-def _mp_fn(rank, flags):
-    device = xm.xla_device()
-    best_dice=0
+def train_single_fold(df_folds, config, device, fold):
+    model = create_model(config).to(device)
+    train_id = df_folds[df_folds['fold'] != fold].filename.values
+    valid_id = df_folds[df_folds['fold'] == fold].filename.values
 
-    train_sampler = DistributedSampler(dataset = flags['TRAIN_DS'],
-                                      num_replicas = xm.xrt_world_size(),
-                                      rank = xm.get_ordinal(),
-                                      shuffle = True)
+    train_loader, valid_loader = prepare_loader(train_id, valid_id, config)
+    fitter = Fitter(model, device, config)
+    logger.info("Fold {} data preparation DONE...".format(fold))
+    best_checkpoint = fitter.fit(train_loader, valid_loader, fold)
+    valid_pred = best_checkpoint['oof_pred']
+    logger.info("Finish Training Fold {}".format(fold))
 
-    train_dl = DataLoader(dataset = flags['TRAIN_DS'],
-                          batch_size = flags['BATCH_SIZE'],
-                          sampler = train_sampler,
-                          num_workers = 0)
-
-    val_sampler = DistributedSampler(dataset = flags['VAL_DS'],
-                                 num_replicas = xm.xrt_world_size(),
-                                 rank = xm.get_ordinal(),
-                                 shuffle = False)
-
-    val_dl = DataLoader(dataset = flags['VAL_DS'],
-                                  batch_size = flags['BATCH_SIZE'],
-                                  sampler = val_sampler,
-                                  num_workers = 0)
+    return valid_pred
 
 
-    fold_model = flags['FOLD_MODEL']
-    fold_model.to(device)
+def train_loop(df_folds: pd.DataFrame, config, device, fold_num:int=None, train_one_fold=False):
+    val_pred = []
 
-    lr = flags['LR']
-    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-6)
-    scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=20, eta_min=1e-6)
-    criterion = loss_fn(config)
-    xm.master_print("Engine ready for training!")
+    if train_one_fold:
+        _oof_pred = train_single_fold(df_folds=df_folds, config=config, device=device, fold=fold_num)
+        val_pred.append(val_pred)
+        curr_fold_dice = sklearn.metrics.roc_auc_score(_oof_df['label'], _oof_df['oof_pred'])
+        logger.info("Fold {} AUC Score: {}".format(fold_num, curr_fold_dice))
 
-    for e_no, epoch in enumerate(range(flags['EPOCHS'])):
-        train_paraloader = pl.ParallelLoader(train_dl, [device]).per_device_loader(device)
-        train_one_epoch(e_no, train_paraloader, fold_model, optimizer,
-                        criterion, device, config, scheduler)
-        del train_paraloader
-        gc.collect()
+    else:
+        for fold in (number+1 for number in range(config.num_folds)):
+            _oof_df = train_single_fold(df_folds=df_folds, config=config, device=device, fold=fold)
+            oof_df = pd.concat([oof_df, _oof_df])
+            curr_fold_auc = sklearn.metrics.roc_auc_score(_oof_df['label'], _oof_df['oof_pred'])
+            logger.info("Fold {} AUC Score: {}".format(fold, curr_fold_auc))
+            logger.info("-------------------------------------------------------------------")
 
-        val_paraloader = pl.ParallelLoader(val_dl, [device]).per_device_loader(device)
-        loss, dice_coeff = validate_one_epoch(e_no, val_paraloader, fold_model,
-                                              criterion, device, config)
-        del val_paraloader
-        gc.collect()
-
-        if dice_coeff > best_dice:
-            xm.master_print("Saving Best Model | Dice Improvement: {} -----> {}".format(best_dice, dice_coeff))
-            xm.save(fold_model.state_dict(), f"model_{flags['FOLD_NO']}.pth")
-            best_dice = dice_coeff
-
+        oof_auc = sklearn.metrics.roc_auc_score(oof_df['label'], oof_df['oof_pred'])
+        logger.info("5 Folds OOF AUC Score: {}".format(oof_auc))
+        oof_df.to_csv(f"oof_{config.model_name}.csv")
 
 
 ###MAIN
 if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(description='hubmap')
+    parser.add_argument('--num-epochs', type=int, default=20, help='number of training epochs')
+    parser.add_argument('--image-size', type=int, default=512, help='image size for training')
+    parser.add_argument('--train-one-fold', type=bool, default=False, help='train one/all folds')
+    args = parser.parse_args()
+
+    #overwrite settings
     config = GlobalConfig
+    config.num_epochs = args.num_epochs
+    config.image_size = args.image_size
+    config.train_one_fold = args.train_one_fold
+    config.model = args.model
+    config.model_name = args.model_name
+
     seed_everything(config.seed)
 
+    #initialise logger
+    logger = log(config, 'training')
+    logger.info(config.__dict__)
+    logger.info("-------------------------------------------------------------------")
+
+    #Generate folds
+    train = pd.DataFrame()
     filename = np.array(os.listdir(config.IMG_PATH))
+    train['filename'] = filename
     groups = [x.split('_')[0] for x in filename]
-    group_fold = GroupKFold(n_splits=config.num_split)
+    group_fold = GroupKFold(n_splits=config.num_folds)
 
-    for fold, (t_idx, v_idx) in enumerate(group_fold.split(filename, groups=groups)):
-        print("Fold: {}".format(fold+1))
-        print("-"*40)
+    train['fold'] = -1
+    for fold, (train_idx, valid_idx) in enumerate(group_fold.split(filename, groups=groups)):
+        train.loc[train_idx, 'fold'] = fold+1
 
-        train_id = filename[t_idx]
-        valid_id = filename[v_idx]
-
-        train_ds = HuBMAPData(img_ids=train_id, config=config, transform=get_train_transform(config))
-        valid_ds = HuBMAPData(img_ids=valid_id, config=config, transform=get_valid_transform(config))
-
-        model = HuBMAPModel(config)
-        model.float()
-
-        FLAGS = {'FOLD_NO': fold,
-                 'TRAIN_DS': train_ds,
-                 'VAL_DS': valid_ds,
-                 'FOLD_MODEL': model,
-                 'LR': config.lr,
-                 'BATCH_SIZE' : 8,
-                 'EPOCHS' : 30}
-
-        xmp.spawn(fn = _mp_fn,
-                  args = (FLAGS,),
-                  nprocs = 8,
-                  start_method = 'fork')
-
-
-        print('\n')
-
-        del train_ds, val_ds, model
+    #training
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    train_loop(df_folds=train, config=config, device=device, fold_num=1,
+               train_one_fold= config.train_one_fold)
