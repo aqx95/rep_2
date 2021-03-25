@@ -1,6 +1,8 @@
 import os
 import gc
 import random
+import argparse
+import pandas as pd
 import numpy as np
 import torch
 import torch.optim as optim
@@ -76,8 +78,6 @@ if __name__ == '__main__':
     config.num_epochs = args.num_epochs
     config.image_size = args.image_size
     config.train_one_fold = args.train_one_fold
-    config.model = args.model
-    config.model_name = args.model_name
 
     seed_everything(config.seed)
 

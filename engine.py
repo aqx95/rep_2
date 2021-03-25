@@ -7,6 +7,7 @@ import numpy as np
 import torch.nn as nn
 from tqdm import tqdm
 
+from loss import loss_fn
 from common import get_dice_coeff, LossMeter
 
 class Fitter:
@@ -27,7 +28,7 @@ class Fitter:
         if not os.path.exists(self.config.LOG_PATH):
             os.makedirs(self.config.LOG_PATH)
 
-        self.loss = loss_fn(config.criterion, config).to(self.device)
+        self.loss = loss_fn(config).to(self.device)
         self.optimizer = getattr(torch.optim, config.optimizer)(self.model.parameters(),
                                 **config.optimizer_params[config.optimizer])
         self.scheduler = getattr(torch.optim.lr_scheduler, config.scheduler)(optimizer=self.optimizer,
@@ -83,7 +84,7 @@ class Fitter:
             self.optimizer.step()
             self.optimizer.zero_grad()
 
-            if self.train_step_scheduler:
+            if self.config.train_step_scheduler:
                 self.scheduler.step(self.epoch + step/len(train_loader))
 
             description = f"Train Steps: {step}/{len(train_loader)} Summary Loss: {summary_loss.avg:.3f}"

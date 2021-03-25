@@ -7,6 +7,7 @@ class GlobalConfig:
     SAVE_PATH = 'save'
 
     #training
+    batch_size = 8
     num_epochs = 10
     num_folds = 5
     seed = 2020
@@ -17,6 +18,7 @@ class GlobalConfig:
                        }
 
     # Scheduler config
+    scheduler = 'CosineAnnealingWarmRestarts'
     scheduler_params = {'StepLR': {'step_size':2, 'gamma':0.3, 'last_epoch':-1, 'verbose':True},
 
                 'ReduceLROnPlateau': {'mode':'max', 'factor':0.5, 'patience':0, 'threshold':0.0001,
