@@ -95,7 +95,7 @@ if __name__ == '__main__':
 
     train['fold'] = -1
     for fold, (train_idx, valid_idx) in enumerate(group_fold.split(filename, groups=groups)):
-        train.loc[train_idx, 'fold'] = fold+1
+        train.loc[valid_idx, 'fold'] = fold+1
 
     #training
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

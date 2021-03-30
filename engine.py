@@ -105,7 +105,7 @@ class Fitter:
                 img, mask = img.to(self.device), mask.to(self.device)
                 batch_size = img.shape[0]
 
-                mask_pred = self.model(mask.float())
+                mask_pred = self.model(img.float())
                 loss = self.loss(mask_pred, mask.float())
                 summary_loss.update(loss.item(), batch_size)
                 val_pred.append(mask_pred)
