@@ -13,8 +13,9 @@ class GlobalConfig:
     seed = 2020
     train_one_fold = True
 
-    criterion = 'dice'
-    criterion_params = {'dice': {'weight':None,'size_average':True}
+    criterion = 'dicebce'
+    criterion_params = {'dice': {'weight':None,'size_average':True},
+                        'dicebce': {'weight':None,'size_average':True},
                        }
 
     # Scheduler config

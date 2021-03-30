@@ -42,11 +42,11 @@ class Fitter:
             self.logger.info("LR: {}".format(self.optimizer.param_groups[0]['lr']))
             train_loss = self.train_one_epoch(train_loader)
             self.logger.info("[RESULTS] Train Epoch: {} | Train Loss: {}".format(self.epoch, train_loss))
-            valid_loss, dice_coeff, val_pred = self.validate_one_epoch(valid_loader)
+            valid_loss, dice_coeff = self.validate_one_epoch(valid_loader)
             self.logger.info("[RESULTS] Validation Epoch: {} | Valid Loss: {} | Dice: {:.3f}".format(self.epoch, valid_loss, dice_coeff))
 
             self.monitored_metrics = dice_coeff
-            self.oof = val_pred
+            #self.oof = val_pred
 
             if self.best_loss > valid_loss:
                 self.best_loss = valid_loss
@@ -77,8 +77,8 @@ class Fitter:
             img, mask = img.to(self.device), mask.to(self.device)
             batch_size = img.shape[0]
 
-            mask_pred = self.model(img.float())
-            loss = self.loss(mask_pred, mask.float())
+            mask_pred = self.model(img)
+            loss = self.loss(mask_pred, mask)
             summary_loss.update(loss.item(), batch_size)
             loss.backward()
             self.optimizer.step()
@@ -96,8 +96,6 @@ class Fitter:
     def validate_one_epoch(self, valid_loader):
         self.model.eval()
         summary_loss = LossMeter()
-        val_pred = []
-        mask_gt = []
         pbar = tqdm(enumerate(valid_loader), total=len(valid_loader))
 
         with torch.no_grad():
@@ -105,20 +103,16 @@ class Fitter:
                 img, mask = img.to(self.device), mask.to(self.device)
                 batch_size = img.shape[0]
 
-                mask_pred = self.model(img.float())
-                loss = self.loss(mask_pred, mask.float())
+                mask_pred = self.model(img)
+                loss = self.loss(mask_pred, mask)
                 summary_loss.update(loss.item(), batch_size)
-                val_pred.append(mask_pred)
-                mask_gt.append(mask.float())
 
                 description = f"Valid Steps: {step}/{len(valid_loader)} Summary Loss: {summary_loss.avg:.3f}"
                 pbar.set_description(description)
 
-        val_pred = np.concatenate(val_pred, axis=0)
-        mask_gt = np.concatenate(mask_gt, axis=0)
         dice_coeff = get_dice_coeff(val_pred, mask_gt)
 
-        return summary_loss.avg, dice_coeff, val_pred
+        return summary_loss.avg
 
 
     def save(self, path):
@@ -129,7 +123,7 @@ class Fitter:
                 "optimizer_state_dict": self.optimizer.state_dict(),
                 "best_auc": self.best_auc,
                 "epoch": self.epoch,
-                "oof_pred": self.oof
+                #"oof_pred": self.oof
             }, path
         )
 

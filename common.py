@@ -15,6 +15,6 @@ class LossMeter:
         return self.loss/self.count
 
 
-def get_dice_coeff(pred, target):
-    pred = (pred>0).float()
+def get_dice_coeff(pred, target, threshold=0.5):
+    pred = (pred > threshold).float()
     return 2.0*(pred*target).sum() / ((pred+target).sum() + 1.0)
