@@ -1,3 +1,5 @@
+import torch
+
 class LossMeter:
     def __init__(self):
         self.reset()
@@ -16,5 +18,5 @@ class LossMeter:
 
 
 def get_dice_coeff(pred, target, threshold=0.5):
-    pred = (pred > threshold).float()
-    return 2.0*(pred*target).sum() / ((pred+target).sum() + 1.0)
+    pred = (torch.sigmoid(pred) > threshold).int()
+    return 2.0*(pred*target).sum() / (pred.sum()+target.sum() + 1.0)

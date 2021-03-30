@@ -23,7 +23,7 @@ class HuBMAPData(Dataset):
 
         if self.transform:
             sample = self.transform(image=img, mask=mask)
-            img, mask = sample['image'].astype('float32'), sample['mask'].astype('float32')
+            img, mask = sample['image'].float(), sample['mask'].float()
 
         return img, mask
 

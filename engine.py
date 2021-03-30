@@ -41,9 +41,9 @@ class Fitter:
         for epoch in range(self.config.num_epochs):
             self.logger.info("LR: {}".format(self.optimizer.param_groups[0]['lr']))
             train_loss = self.train_one_epoch(train_loader)
-            self.logger.info("[RESULTS] Train Epoch: {} | Train Loss: {}".format(self.epoch, train_loss))
+            self.logger.info("[RESULTS] Train Epoch: {} | Train Loss: {:.3f}".format(self.epoch, train_loss))
             valid_loss, dice_coeff = self.validate_one_epoch(valid_loader)
-            self.logger.info("[RESULTS] Validation Epoch: {} | Valid Loss: {} | Dice: {:.3f}".format(self.epoch, valid_loss, dice_coeff))
+            self.logger.info("[RESULTS] Validation Epoch: {} | Valid Loss: {:.3f} | Dice: {:.3f}".format(self.epoch, valid_loss, dice_coeff))
 
             self.monitored_metrics = dice_coeff
             #self.oof = val_pred
@@ -77,7 +77,7 @@ class Fitter:
             img, mask = img.to(self.device), mask.to(self.device)
             batch_size = img.shape[0]
 
-            mask_pred = self.model(img)
+            mask_pred = self.model(img) #(bs, 1, h, w)
             loss = self.loss(mask_pred, mask)
             summary_loss.update(loss.item(), batch_size)
             loss.backward()
@@ -95,6 +95,7 @@ class Fitter:
 
     def validate_one_epoch(self, valid_loader):
         self.model.eval()
+        dice = []
         summary_loss = LossMeter()
         pbar = tqdm(enumerate(valid_loader), total=len(valid_loader))
 
@@ -106,13 +107,14 @@ class Fitter:
                 mask_pred = self.model(img)
                 loss = self.loss(mask_pred, mask)
                 summary_loss.update(loss.item(), batch_size)
+                dice_coeff = get_dice_coeff(mask_pred, mask)
+                dice.append(dice_coeff)
 
-                description = f"Valid Steps: {step}/{len(valid_loader)} Summary Loss: {summary_loss.avg:.3f}"
+                description = f"Valid Steps: {step}/{len(valid_loader)} Summary Loss: {summary_loss.avg:.3f} Dice: {sum(dice)/len(dice):.3f}"
                 pbar.set_description(description)
 
-        dice_coeff = get_dice_coeff(val_pred, mask_gt)
 
-        return summary_loss.avg
+        return summary_loss.avg, sum(dice)/len(dice)
 
 
     def save(self, path):
@@ -121,7 +123,7 @@ class Fitter:
             {
                 "model_state_dict": self.model.state_dict(),
                 "optimizer_state_dict": self.optimizer.state_dict(),
-                "best_auc": self.best_auc,
+                "best_auc": self.best_dice,
                 "epoch": self.epoch,
                 #"oof_pred": self.oof
             }, path
