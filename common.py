@@ -20,14 +20,15 @@ class LossMeter:
 class DiceMeter:
     def __init__(self, axis=1):
         self.axis = axis
+        self.reset()
     def reset(self):
-        self.inter
-        self.union = 0,0
+        self.inter = 0.0
+        self.union = 0.0
     def accumulate(self, pred, target):
-        pred, target = torch.flatten(torch.sigmoid(pred)), torch.flatten(target)
-        self.inter += (pred*target).float().sum().item()
-        self.union += (pred+target).float().sum().item()
+        pred, target = torch.flatten(torch.sigmoid(pred).float()), torch.flatten(target.float())
+        self.inter += (pred*target).sum().item()
+        self.union += (pred+target).sum().item()
 
     @property
-    def value(self):
+    def avg(self):
         return 2.0 * self.inter/self.union if self.union > 0 else None

@@ -53,7 +53,7 @@ class Fitter:
             if self.best_dice < dice_coeff:
                 self.logger.info(f"Epoch {self.epoch}: Saving model... | Dice improvement {self.best_dice} -> {dice_coeff}")
                 self.save(os.path.join(self.config.SAVE_PATH, '{}_fold{}.pt').format(self.config.encoder, fold))
-                self.dice = dice_coeff
+                self.best_dice = dice_coeff
 
             #Update Scheduler
             if self.config.val_step_scheduler:
@@ -77,7 +77,7 @@ class Fitter:
             img, mask = img.to(self.device), mask.to(self.device)
             batch_size = img.shape[0]
 
-            mask_pred = self.model(img) #(bs, 1, h, w)
+            mask_pred = torch.squeeze(self.model(img)) #(bs, [1], h, w)
             loss = self.loss(mask_pred, mask)
             summary_loss.update(loss.item(), batch_size)
             loss.backward()
@@ -104,7 +104,7 @@ class Fitter:
                 img, mask = img.to(self.device), mask.to(self.device)
                 batch_size = img.shape[0]
 
-                mask_pred = self.model(img)
+                mask_pred = torch.squeeze(self.model(img))
                 loss = self.loss(mask_pred, mask)
                 summary_loss.update(loss.item(), batch_size)
                 dice.accumulate(mask_pred, mask)

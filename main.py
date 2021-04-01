@@ -15,7 +15,6 @@ from loss import loss_fn
 from model import create_model
 from engine import Fitter
 from data import prepare_loader
-from common import get_dice_coeff
 
 
 def seed_everything(seed):
