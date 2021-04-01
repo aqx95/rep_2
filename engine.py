@@ -8,7 +8,7 @@ import torch.nn as nn
 from tqdm import tqdm
 
 from loss import loss_fn
-from common import get_dice_coeff, LossMeter
+from common import DiceMeter, LossMeter
 
 class Fitter:
     def __init__(self, model, device, config):
@@ -95,7 +95,7 @@ class Fitter:
 
     def validate_one_epoch(self, valid_loader):
         self.model.eval()
-        dice = []
+        dice = DiceMeter()
         summary_loss = LossMeter()
         pbar = tqdm(enumerate(valid_loader), total=len(valid_loader))
 
@@ -107,14 +107,13 @@ class Fitter:
                 mask_pred = self.model(img)
                 loss = self.loss(mask_pred, mask)
                 summary_loss.update(loss.item(), batch_size)
-                dice_coeff = get_dice_coeff(mask_pred, mask)
-                dice.append(dice_coeff)
+                dice.accumulate(mask_pred, mask)
 
-                description = f"Valid Steps: {step}/{len(valid_loader)} Summary Loss: {summary_loss.avg:.3f} Dice: {sum(dice)/len(dice):.3f}"
+                description = f"Valid Steps: {step}/{len(valid_loader)} Summary Loss: {summary_loss.avg:.3f} Dice: {dice.avg:.3f}"
                 pbar.set_description(description)
 
 
-        return summary_loss.avg, sum(dice)/len(dice)
+        return summary_loss.avg, dice.avg
 
 
     def save(self, path):
