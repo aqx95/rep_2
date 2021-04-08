@@ -28,15 +28,17 @@ def seed_everything(seed):
 
 
 def plot_image(dataloader, path):
-    image, mask = dataloader.__getitem__(6)
-    fig, axes = plt.subplots(figsize=(16, 4), nrows=2, ncols=bsize)
+    image, mask = next(iter(dataloader)) #img(bs, C, H, W), mask(bs, H, W)
+    image = image.permute(0,2,3,1)
+    mask = mask * 255
+    fig, axes = plt.subplots(figsize=(16, 4), nrows=2, ncols=8)
     for j in range(8):
         axes[0, j].imshow(image[j])
         axes[0, j].set_title(j)
         axes[0, j].axis('off')
         axes[1, j].imshow(mask[j])
         axes[1, j].axis('off')
-    plt.savefig(os.path.join(path, 'loader_image.png'))
+    plt.savefig('loader_image.png')
 
 
 def train_single_fold(df_folds, config, device, fold):
