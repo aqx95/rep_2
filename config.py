@@ -7,19 +7,19 @@ class GlobalConfig:
     SAVE_PATH = 'save'
 
     #training
-    batch_size = 8
-    num_epochs = 10
+    batch_size = 16
+    num_epochs = 20
     num_folds = 5
     seed = 2020
     train_one_fold = True
 
     criterion = 'dicebce'
     criterion_params = {'dice': {'weight':None,'size_average':True},
-                        'dicebce': {'weight':None,'size_average':True},
+                        'dicebce': {'bce_weight':0.2,'size_average':True},
                        }
 
     # Scheduler config
-    scheduler = 'CosineAnnealingWarmRestarts'
+    scheduler = 'CosineAnnealingLR'
     scheduler_params = {'StepLR': {'step_size':2, 'gamma':0.3, 'last_epoch':-1, 'verbose':True},
 
                 'ReduceLROnPlateau': {'mode':'max', 'factor':0.5, 'patience':0, 'threshold':0.0001,
@@ -32,8 +32,8 @@ class GlobalConfig:
                 'CosineAnnealingLR':{'T_max':20, 'last_epoch':-1} #validation step
                 }
 
-    train_step_scheduler = True
-    val_step_scheduler = False
+    train_step_scheduler = False
+    val_step_scheduler = True
 
 
     # optimizer
@@ -46,4 +46,4 @@ class GlobalConfig:
 
     #model
     net = 'unet'
-    encoder = 'se_resnext50_32x4d'
+    encoder = 'efficientnet-b0'

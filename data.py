@@ -33,18 +33,13 @@ def get_train_transform(config):
     return Compose([
         HorizontalFlip(),
         VerticalFlip(),
-        RandomRotate90(),
-        ShiftScaleRotate(shift_limit=0.0625, scale_limit=0.2, rotate_limit=15, p=0.9,
-                         border_mode=cv2.BORDER_REFLECT),
+        RandomRotate90(p=0.3),
+        ShiftScaleRotate(p=0.3),
+        RandomBrightnessContrast(p=0.3),
         OneOf([
             OpticalDistortion(p=0.3),
-            GridDistortion(p=.1),
-            IAAPiecewiseAffine(p=0.3),
-              ], p=0.3),
-        OneOf([
-            HueSaturationValue(10,15,10),
-            CLAHE(clip_limit=2),
-            RandomBrightnessContrast(),
+            GridDistortion(),
+            ElasticTransform(alpha=120, sigma=120 * 0.05, alpha_affine=120 * 0.03)
               ], p=0.3),
         Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ToTensorV2(p=1.0),

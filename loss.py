@@ -7,10 +7,8 @@ class DiceLoss(nn.Module):
         super().__init__()
 
     def forward(self, inputs, targets, smooth=1.0):
-        inputs = torch.sigmoid(inputs)
-
-        inputs = inputs.view(-1)
-        targets = targets.view(-1)
+        inputs = torch.flatten(inputs)
+        targets = torch.flatten(targets)
 
         intersection = (inputs*targets).sum()
         dice = (2.*intersection+smooth)/(inputs.sum()+targets.sum()+smooth)
@@ -19,24 +17,21 @@ class DiceLoss(nn.Module):
 
 class DiceBCELoss(nn.Module):
     # Formula Given above.
-    def __init__(self, weight=None, size_average=True):
+    def __init__(self, bce_weight=0.2, size_average=True):
         super(DiceBCELoss, self).__init__()
+        self.diceloss = DiceLoss()
+        self.bce_weight = bce_weight
 
     def forward(self, inputs, targets, smooth=1):
-
-        #comment out if your model contains a sigmoid or equivalent activation layer
-        inputs = torch.sigmoid(inputs)
-
         #flatten label and prediction tensors
-        inputs = inputs.view(-1)
-        targets = targets.view(-1)
+        inputs = torch.flatten(inputs)
+        targets = torch.flatten(targets)
 
-        intersection = (inputs * targets).mean()
-        dice_loss = 1 - (2.*intersection + smooth)/(inputs.mean() + targets.mean() + smooth)
+        dice_loss = self.diceloss(inputs, targets)
         BCE = F.binary_cross_entropy(inputs, targets, reduction='mean')
-        Dice_BCE = BCE + dice_loss
+        Dice_BCE = (self.bce_weight*BCE) + (1-self.bce_weight)*dice_loss
 
-        return Dice_BCE.mean()
+        return Dice_BCE
 
 
 #loss factory

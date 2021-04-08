@@ -7,7 +7,7 @@ class HuBMAPModel(nn.Module):
         self.model = Unet(encoder_name=config.encoder,
                          encoder_weights='imagenet',
                          classes=1,
-                         activation=None)
+                         activation='sigmoid')
 
     def forward(self, x):
         img_mask = self.model(x)

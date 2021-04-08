@@ -8,9 +8,10 @@ import torch
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 from sklearn.model_selection import GroupKFold
+import matplotlib.pyplot as plt
 
 from config import GlobalConfig
-from logger import log
+from common import log
 from loss import loss_fn
 from model import create_model
 from engine import Fitter
@@ -26,12 +27,26 @@ def seed_everything(seed):
     torch.backends.cudnn.deterministic = True
 
 
+def plot_image(dataloader, path):
+    image, mask = dataloader.__getitem__(6)
+    fig, axes = plt.subplots(figsize=(16, 4), nrows=2, ncols=bsize)
+    for j in range(8):
+        axes[0, j].imshow(image[j])
+        axes[0, j].set_title(j)
+        axes[0, j].axis('off')
+        axes[1, j].imshow(mask[j])
+        axes[1, j].axis('off')
+    plt.savefig(os.path.join(path, 'loader_image.png'))
+
+
 def train_single_fold(df_folds, config, device, fold):
     model = create_model(config).to(device)
     train_id = df_folds[df_folds['fold'] != fold].filename.values
     valid_id = df_folds[df_folds['fold'] == fold].filename.values
 
     train_loader, valid_loader = prepare_loader(train_id, valid_id, config)
+    plot_image(train_loader, config.SAVE_PATH)  #output img
+    #Begin fitting single fold
     fitter = Fitter(model, device, config)
     logger.info("Fold {} data preparation DONE...".format(fold))
     best_checkpoint = fitter.fit(train_loader, valid_loader, fold)
