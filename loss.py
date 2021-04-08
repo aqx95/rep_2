@@ -22,13 +22,18 @@ class DiceBCELoss(nn.Module):
         self.diceloss = DiceLoss()
         self.bce_weight = bce_weight
 
-    def forward(self, inputs, targets, smooth=1):
+    def forward(self, inputs, targets, cls=None, non_empty=None, smooth=1):
         #flatten label and prediction tensors
         inputs = torch.flatten(inputs)
         targets = torch.flatten(targets)
 
         dice_loss = self.diceloss(inputs, targets)
-        BCE = F.binary_cross_entropy(inputs, targets, reduction='mean')
+        if cls != None:
+          cls = torch.flatten(cls).float()
+          non_empty = torch.flatten(non_empty).float()
+          BCE = F.binary_cross_entropy(cls, non_empty, reduction='mean')
+        else:
+          BCE = F.binary_cross_entropy(inputs, targets, reduction='mean')
         Dice_BCE = (self.bce_weight*BCE) + (1-self.bce_weight)*dice_loss
 
         return Dice_BCE

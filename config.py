@@ -13,9 +13,16 @@ class GlobalConfig:
     seed = 2020
     train_one_fold = True
 
+    #classification head
+    use_cls = False
+    threshold = 0.5
+    aux_params={'classes':1,
+          'dropout': 0.0,
+          'activation':'sigmoid'}
+
     criterion = 'dicebce'
     criterion_params = {'dice': {'weight':None,'size_average':True},
-                        'dicebce': {'bce_weight':0.2,'size_average':True},
+                        'dicebce': {'bce_weight':0.5,'size_average':True},
                        }
 
     # Scheduler config

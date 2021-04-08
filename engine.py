@@ -36,6 +36,7 @@ class Fitter:
 
 
     def fit(self, train_loader, valid_loader, fold):
+        self.logger.info("Training with cls head: {}".format(self.config.use_cls))
         self.logger.info("Starts Training with {} on Device: {}".format(self.config.encoder, self.device))
 
         for epoch in range(self.config.num_epochs):
@@ -73,12 +74,18 @@ class Fitter:
         summary_loss = LossMeter()
         pbar = tqdm(enumerate(train_loader), total=len(train_loader))
 
-        for step, (img, mask) in pbar:
-            img, mask = img.to(self.device), mask.to(self.device)
+        for step, (img, mask, non_empty) in pbar:
+            img, mask, non_empty = img.to(self.device), mask.to(self.device), non_empty.to(self.device)
             batch_size = img.shape[0]
 
-            mask_pred = torch.squeeze(self.model(img)) #(bs, [1], h, w)
-            loss = self.loss(mask_pred, mask)
+            if self.config.use_cls:
+              mask_pred, cls = self.model(img) #(bs, [1], h, w)
+              mask_pred = torch.squeeze(mask_pred)
+              loss = self.loss(mask_pred, mask, cls=cls, non_empty=non_empty)
+            else:
+              mask_pred = torch.squeeze(self.model(img))
+              loss = self.loss(mask_pred, mask)
+
             summary_loss.update(loss.item(), batch_size)
             loss.backward()
             self.optimizer.step()
@@ -100,12 +107,20 @@ class Fitter:
         pbar = tqdm(enumerate(valid_loader), total=len(valid_loader))
 
         with torch.no_grad():
-            for step, (img, mask) in pbar:
-                img, mask = img.to(self.device), mask.to(self.device)
+            for step, (img, mask, non_empty) in pbar:
+                img, mask, non_empty = img.to(self.device), mask.to(self.device), non_empty.to(self.device)
                 batch_size = img.shape[0]
 
-                mask_pred = torch.squeeze(self.model(img))
-                loss = self.loss(mask_pred, mask)
+                if self.config.use_cls:
+                  mask_pred, cls = self.model(img) #(bs, [1], h, w)
+                  mask_pred = torch.squeeze(mask_pred)
+                  cls = (cls > self.config.threshold).unsqueeze(2)
+                  mask_pred = mask_pred * cls
+                  loss = self.loss(mask_pred, mask, cls=cls, non_empty=non_empty)
+                else:
+                  mask_pred = torch.squeeze(self.model(img))
+                  loss = self.loss(mask_pred, mask)
+
                 summary_loss.update(loss.item(), batch_size)
                 dice.accumulate(mask_pred, mask)
 

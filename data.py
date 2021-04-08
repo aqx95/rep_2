@@ -21,11 +21,15 @@ class HuBMAPData(Dataset):
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
 
+        non_empty = 1
+        if not (mask.sum(axis=(0,1))):
+          non_empty = 0
+
         if self.transform:
             sample = self.transform(image=img, mask=mask)
             img, mask = sample['image'].float(), sample['mask'].float()
 
-        return img, mask
+        return img, mask, non_empty
 
 
 #Transformation
