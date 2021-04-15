@@ -51,33 +51,28 @@ def train_single_fold(df_folds, config, device, fold):
     #Begin fitting single fold
     fitter = Fitter(model, device, config)
     logger.info("Fold {} data preparation DONE...".format(fold))
-    best_checkpoint = fitter.fit(train_loader, valid_loader, fold)
-    valid_pred = best_checkpoint['oof_pred']
+    best_fold_dice = fitter.fit(train_loader, valid_loader, fold)
     logger.info("Finish Training Fold {}".format(fold))
 
-    return valid_pred
+    return best_fold_dice
 
 
 def train_loop(df_folds: pd.DataFrame, config, device, fold_num:int=None, train_one_fold=False):
     val_pred = []
 
     if train_one_fold:
-        _oof_pred = train_single_fold(df_folds=df_folds, config=config, device=device, fold=fold_num)
-        val_pred.append(val_pred)
-        curr_fold_dice = sklearn.metrics.roc_auc_score(_oof_df['label'], _oof_df['oof_pred'])
-        logger.info("Fold {} AUC Score: {}".format(fold_num, curr_fold_dice))
+        fold_dice = train_single_fold(df_folds=df_folds, config=config, device=device, fold=fold_num)
+        logger.info("Fold {} Valid Dice Score: {}".format(fold_num, fold_dice))
 
     else:
         for fold in (number+1 for number in range(config.num_folds)):
-            _oof_df = train_single_fold(df_folds=df_folds, config=config, device=device, fold=fold)
-            oof_df = pd.concat([oof_df, _oof_df])
-            curr_fold_auc = sklearn.metrics.roc_auc_score(_oof_df['label'], _oof_df['oof_pred'])
-            logger.info("Fold {} AUC Score: {}".format(fold, curr_fold_auc))
+            fold_dice = train_single_fold(df_folds=df_folds, config=config, device=device, fold=fold)
+            val_pred.append(fold_dice)
+            logger.info("Fold {} Valid Dice Score: {}".format(fold_num, fold_dice))
             logger.info("-------------------------------------------------------------------")
 
-        oof_auc = sklearn.metrics.roc_auc_score(oof_df['label'], oof_df['oof_pred'])
-        logger.info("5 Folds OOF AUC Score: {}".format(oof_auc))
-        oof_df.to_csv(f"oof_{config.model_name}.csv")
+        mean_oof_dice = sum(val_pred) / len(val_pred)
+        logger.info("5 Folds OOF Dice Score: {}".format(mean_oof_dice))
 
 
 ###MAIN
