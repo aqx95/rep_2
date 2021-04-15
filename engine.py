@@ -66,7 +66,7 @@ class Fitter:
             self.epoch += 1
 
         #fold_checkpoint = self.load(os.path.join(self.config.SAVE_PATH, '{}_fold{}.pt').format(self.config.encoder, fold))
-        return best_dice
+        return self.best_dice
 
 
     def train_one_epoch(self, train_loader):

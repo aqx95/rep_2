@@ -81,7 +81,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='hubmap')
     parser.add_argument('--num-epochs', type=int, default=20, help='number of training epochs')
     parser.add_argument('--image-size', type=int, default=512, help='image size for training')
-    parser.add_argument('--train-one-fold', type=bool, default=False, help='train one/all folds')
+    parser.add_argument('--train-one-fold', action='store_true', help='train one/all folds')
     args = parser.parse_args()
 
     #overwrite settings
