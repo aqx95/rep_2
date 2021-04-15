@@ -18,6 +18,7 @@ class Fitter:
         self.logger = logging.getLogger('training')
 
         self.best_dice = 0
+        self.best_thres = None
         self.epoch = 0
         self.best_loss = np.inf
         self.oof = None
@@ -43,7 +44,7 @@ class Fitter:
             self.logger.info("LR: {}".format(self.optimizer.param_groups[0]['lr']))
             train_loss = self.train_one_epoch(train_loader)
             self.logger.info("[RESULTS] Train Epoch: {} | Train Loss: {:.3f}".format(self.epoch, train_loss))
-            valid_loss, dice_coeff = self.validate_one_epoch(valid_loader)
+            valid_loss, dice_coeff, dice_thres= self.validate_one_epoch(valid_loader)
             self.logger.info("[RESULTS] Validation Epoch: {} | Valid Loss: {:.3f} | Dice: {:.3f}".format(self.epoch, valid_loss, dice_coeff))
 
             self.monitored_metrics = dice_coeff
@@ -51,10 +52,11 @@ class Fitter:
 
             if self.best_loss > valid_loss:
                 self.best_loss = valid_loss
-            if self.best_dice < dice_coeff:
-                self.logger.info(f"Epoch {self.epoch}: Saving model... | Dice improvement {self.best_dice} -> {dice_coeff}")
+            if self.best_dice < dice_thres.value.max():
+                self.logger.info(f"Epoch {self.epoch}: Saving model... | Dice improvement {self.best_dice} -> {dice_thres.value.max()}")
                 self.save(os.path.join(self.config.SAVE_PATH, '{}_fold{}.pt').format(self.config.encoder, fold))
-                self.best_dice = dice_coeff
+                self.best_dice = dice_thres.value.max()
+                self.best_thres = dice_thres
 
             #Update Scheduler
             if self.config.val_step_scheduler:
@@ -66,7 +68,7 @@ class Fitter:
             self.epoch += 1
 
         #fold_checkpoint = self.load(os.path.join(self.config.SAVE_PATH, '{}_fold{}.pt').format(self.config.encoder, fold))
-        return self.best_dice
+        return self.best_dice, self.best_thres
 
 
     def train_one_epoch(self, train_loader):
@@ -103,6 +105,7 @@ class Fitter:
     def validate_one_epoch(self, valid_loader):
         self.model.eval()
         dice = DiceMeter()
+        dice_thr = DicethrMeter()
         summary_loss = LossMeter()
         pbar = tqdm(enumerate(valid_loader), total=len(valid_loader))
 
@@ -123,12 +126,13 @@ class Fitter:
 
                 summary_loss.update(loss.item(), batch_size)
                 dice.accumulate(mask_pred, mask)
+                dice_thr.accumulate(mask_pred, mask)
 
-                description = f"Valid Steps: {step}/{len(valid_loader)} Summary Loss: {summary_loss.avg:.3f} Dice: {dice.avg:.3f}"
+                description = f"Valid Steps: {step}/{len(valid_loader)} Summary Loss: {summary_loss.avg:.3f} Dice: {dice.avg:.3f} Dice_thr:{dice_thr.value.max():.3f}"
                 pbar.set_description(description)
 
 
-        return summary_loss.avg, dice.avg
+        return summary_loss.avg, dice.avg, dice_thr
 
 
     def save(self, path):

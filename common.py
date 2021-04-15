@@ -25,9 +25,11 @@ class DiceMeter:
         self.axis = axis
         self.reset()
         self.smooth = smooth
+
     def reset(self):
         self.inter = 0.0
         self.union = 0.0
+
     def accumulate(self, pred, target):
         pred, target = torch.flatten(pred), torch.flatten(target)
         self.inter += (pred*target).sum().item()
@@ -36,6 +38,30 @@ class DiceMeter:
     @property
     def avg(self):
         return (2.0 * self.inter + self.smooth)/(self.union + self.smooth)
+
+
+class DicethrMeter:
+    def __init__(self, ths=np.arange(0.1,0.9,0.01), axis=1):
+        self.axis = axis
+        self.ths = ths
+        self.reset()
+
+    def reset(self):
+        self.inter = torch.zeros(len(self.ths))
+        self.union = torch.zeros(len(self.ths))
+
+    def accumulate(self, pred, target):
+        pred, target = torch.flatten(pred), torch.flatten(target)
+        for i, th in enumerate(self.ths):
+            p = (pred > th).float()
+            self.inter[i] += (p*target).float().sum().item()
+            self.union[i] += (p+target).float().sum().item()
+
+    @property
+    def value(self):
+        dices = torch.where(self.union > 0.0, 2.0*self.inter/self.union,
+                            torch.zeros_like(self.union))
+        return dices
 
 
 

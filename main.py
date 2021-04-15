@@ -43,6 +43,20 @@ def plot_image(dataloader, path, fold):
     plt.savefig(os.path.join(path, f'loader_image_{fold}.png'))
 
 
+def plot_threhold(dice):
+    dices = dice.value
+    noise_ths = dice.ths
+    best_dice = dices.max()
+    best_thr = noise_ths[dices.argmax()]
+    plt.figure(figsize=(8,4))
+    plt.plot(noise_ths, dices, color='blue')
+    plt.vlines(x=best_thr, ymin=dices.min(), ymax=dices.max(), colors='black')
+    d = dices.max() - dices.min()
+    plt.text(noise_ths[-1]-0.1, best_dice-0.1*d, f'DICE = {best_dice:.3f}', fontsize=12);
+    plt.text(noise_ths[-1]-0.1, best_dice-0.2*d, f'TH = {best_thr:.3f}', fontsize=12);
+    plt.show()
+
+
 def train_single_fold(df_folds, config, device, fold):
     model = create_model(config).to(device)
     train_id = df_folds[df_folds['fold'] != fold].filename.values
@@ -53,7 +67,8 @@ def train_single_fold(df_folds, config, device, fold):
     #Begin fitting single fold
     fitter = Fitter(model, device, config)
     logger.info("Fold {} data preparation DONE...".format(fold))
-    best_fold_dice = fitter.fit(train_loader, valid_loader, fold)
+    best_fold_dice, fold_thres = fitter.fit(train_loader, valid_loader, fold)
+    plot_threshold(fold_thres)
     logger.info("Finish Training Fold {}".format(fold))
 
     return best_fold_dice
@@ -105,10 +120,12 @@ if __name__ == '__main__':
     filename = np.array(os.listdir(config.IMG_PATH))
     train['filename'] = filename
     groups = [x.split('_')[0] for x in filename]
-    group_fold = GroupKFold(n_splits=config.num_folds)
+    kfold = KFold(n_splits=config.num_folds,
+                  random_state=config.seed,
+                  shuffle=True)
 
     train['fold'] = -1
-    for fold, (train_idx, valid_idx) in enumerate(group_fold.split(filename, groups=groups)):
+    for fold, (train_idx, valid_idx) in enumerate(kfold.split(filename)):
         train.loc[valid_idx, 'fold'] = fold+1
 
     #training
