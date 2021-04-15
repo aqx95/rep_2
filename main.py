@@ -27,10 +27,11 @@ def seed_everything(seed):
     torch.backends.cudnn.deterministic = True
 
 
-def plot_image(dataloader, path):
+def plot_image(dataloader, path, fold):
+    if not os.path.exists(path):
+        os.makedirs(path)
     image, mask, non_empty = next(iter(dataloader)) #img(bs, C, H, W), mask(bs, H, W)
     image = image.permute(0,2,3,1)
-    mask = mask * 255
     fig, axes = plt.subplots(figsize=(16, 4), nrows=2, ncols=8)
     for j in range(8):
         axes[0, j].imshow(image[j])
@@ -38,7 +39,8 @@ def plot_image(dataloader, path):
         axes[0, j].axis('off')
         axes[1, j].imshow(mask[j])
         axes[1, j].axis('off')
-    plt.savefig('loader_image.png')
+    del dataloader
+    plt.savefig(os.path.join(path, f'loader_image_{fold}.png'))
 
 
 def train_single_fold(df_folds, config, device, fold):
@@ -47,7 +49,7 @@ def train_single_fold(df_folds, config, device, fold):
     valid_id = df_folds[df_folds['fold'] == fold].filename.values
 
     train_loader, valid_loader = prepare_loader(train_id, valid_id, config)
-    plot_image(train_loader, config.SAVE_PATH)  #output img
+    plot_image(train_loader, config.SAVE_PATH, fold)  #output img
     #Begin fitting single fold
     fitter = Fitter(model, device, config)
     logger.info("Fold {} data preparation DONE...".format(fold))
@@ -68,7 +70,7 @@ def train_loop(df_folds: pd.DataFrame, config, device, fold_num:int=None, train_
         for fold in (number+1 for number in range(config.num_folds)):
             fold_dice = train_single_fold(df_folds=df_folds, config=config, device=device, fold=fold)
             val_pred.append(fold_dice)
-            logger.info("Fold {} Valid Dice Score: {}".format(fold_num, fold_dice))
+            logger.info("Fold {} Valid Dice Score: {}".format(fold, fold_dice))
             logger.info("-------------------------------------------------------------------")
 
         mean_oof_dice = sum(val_pred) / len(val_pred)
@@ -83,6 +85,7 @@ if __name__ == '__main__':
     parser.add_argument('--image-size', type=int, default=512, help='image size for training')
     parser.add_argument('--train-one-fold', action='store_true', help='train one/all folds')
     args = parser.parse_args()
+    print(args)
 
     #overwrite settings
     config = GlobalConfig
