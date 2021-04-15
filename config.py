@@ -23,6 +23,7 @@ class GlobalConfig:
     criterion = 'dicebce'
     criterion_params = {'dice': {'weight':None,'size_average':True},
                         'dicebce': {'bce_weight':0.5,'size_average':True},
+                        'focal': {'alpha':0.8, 'gamma':2.0}
                        }
 
     # Scheduler config
@@ -36,7 +37,7 @@ class GlobalConfig:
                 'CosineAnnealingWarmRestarts': {'T_0':20, 'T_mult':1, 'eta_min':1e-6, 'last_epoch':-1,
                                                 'verbose':True}, #train step
 
-                'CosineAnnealingLR':{'T_max':20, 'last_epoch':-1} #validation step
+                'CosineAnnealingLR':{'T_max':15, 'last_epoch':-1} #validation step
                 }
 
     train_step_scheduler = False
